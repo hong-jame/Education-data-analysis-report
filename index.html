@@ -171,9 +171,16 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
         let idCol = -1; for (let ci = 0; ci < row.length; ci++) { const v = num(row[ci]); if (v != null && v > 2000000000 && Number.isInteger(v)) { idCol = ci; break; } }
         if (idCol < 0) continue;
         const corr = itemCols.map(ci => (S(row[ci]) === '.') ? 1 : 0);
+        // 실제 선택 선지(1~5): '.'=정답 선지 그대로, 숫자=그 선지를 골라 틀림, 그 외(무표기/복수표기)=0
+        const resp = itemCols.map((ci, ii) => {
+          const cell = row[ci];
+          if (S(cell) === '.') return answer[ii];
+          const v = num(cell);
+          return (v != null && v >= 1 && v <= 5) ? v : 0;
+        });
         let raw = rawCol >= 0 ? num(row[rawCol]) : null;
         if (raw == null) { for (let ci = row.length - 1; ci > maxIC; ci--) { if (isNum(row[ci])) { raw = row[ci]; break; } } }
-        students.push({ id: num(row[idCol]), name: S(row[nameCol]), banno: S(row[nameCol - 1]), raw: raw, corr: corr });
+        students.push({ id: num(row[idCol]), name: S(row[nameCol]), banno: S(row[nameCol - 1]), raw: raw, corr: corr, resp: resp });
       }
     });
     return { answer, baejeom, students };
@@ -234,6 +241,30 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     return { N, disc, srate, kr20, gradeDist: gd, heat: { g1: heat[0], g2: heat[1], g3: heat[2], g4: heat[3], g5: heat[4] }, killers, multi };
   }
 
+  /* ── 등급별(1~5등급) 문항 선지 선택 분포 ── */
+  function analyzeItemGrade(jeongo, cutsInfo) {
+    const gof = cutsInfo.gof;
+    const K = jeongo.answer.length;
+    const st = jeongo.students.filter(s => s.raw != null && s.corr.some(x => x) && s.resp && s.resp.length === K);
+    const out = [];
+    for (let i = 0; i < K; i++) {
+      const ans = jeongo.answer[i];
+      const grades = [1, 2, 3, 4, 5].map(g => {
+        const grp = st.filter(s => gof(s.raw) === g);
+        const n = grp.length;
+        const dist = [0, 0, 0, 0, 0]; let blank = 0;
+        grp.forEach(s => { const v = s.resp[i]; if (v >= 1 && v <= 5) dist[v - 1]++; else blank++; });
+        const rate = n ? r1(dist[ans - 1] / n * 100) : null;
+        const pct = dist.map(d => n ? r1(d / n * 100) : 0);
+        let top = 0, topN = -1;
+        dist.forEach((d, ci) => { if (d > topN) { topN = d; top = ci + 1; } });
+        return { g: g, n: n, dist: dist, pct: pct, blank: blank, rate: rate, top: top, topN: topN };
+      });
+      out.push({ ans: ans, grades: grades });
+    }
+    return out;
+  }
+
   /* ── 메인: 파일 aoa 목록 → 결과 객체 ── */
   function analyze(files, examName) {
     const buckets = { sungjeok: [], jeongdap: [], bunseok: [], jeongo: [], unknown: [] };
@@ -280,12 +311,15 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
         if (jeongo.baejeom) items.forEach((it, i) => { it.bj = jeongo.baejeom[i]; });
         result.sample = { N: sa.N, kr20: sa.kr20, gradeDist: sa.gradeDist, heat: sa.heat, hardQs: hard, killers: sa.killers, multi: sa.multi };
         result.available.disc = true; result.available.heatmap = true; result.available.names = true;
+        const ig = analyzeItemGrade(jeongo, cutsInfo);
+        result.itemGrade = items.map((it, i) => ({ q: it.q, ans: it.ans, rate: it.rate, disc: it.disc, grades: ig[i].grades }));
+        result.available.itemGrade = true;
       }
     }
     return result;
   }
 
-  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, analyze, gradeCuts, histogram };
+  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, analyze, gradeCuts, histogram, analyzeItemGrade };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.NEIS = api;
 })(typeof window !== 'undefined' ? window : this);
@@ -447,6 +481,21 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
 .info-note b{color:#0f172a}
 .legend-row{display:flex;gap:18px;flex-wrap:wrap;font-size:.8rem;color:#64748b;margin-bottom:14px;justify-content:center}
 .legend-item{display:flex;align-items:center;gap:6px}.legend-dot{width:12px;height:12px;border-radius:3px}
+.ig-bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.ig-bar select{padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:.85rem;font-weight:600;color:#0f172a;background:#fff}
+.ig-navbtn{padding:8px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit}
+.ig-navbtn:hover{background:#f0fdf4;border-color:#16a34a}
+.ig-meta{margin-left:auto;font-size:.85rem;color:#475569}
+.ig-table th.ig-ans{background:#f0fdf4;color:#15803d}
+.ig-table td.ig-ans{background:#f0fdf4}
+.ig-table td.ig-topwrong{background:#fef2f2}
+.ig-table td.ig-topwrong .ig-star,.ig-table td.ig-top .ig-star{color:#d97706;font-weight:700}
+.ig-table td .ig-n{font-size:.72rem;color:#94a3b8}
+.ig-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.ig-layout{grid-template-columns:1fr}}
+.ig-qimg-wrap{border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;max-height:560px;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:8px}
+.ig-qimg-wrap canvas{width:100%;height:auto;display:block;border-radius:6px}
+.ig-qnote,.ig-qloading{padding:30px 16px;text-align:center;color:#94a3b8;font-size:.85rem;line-height:1.7}
 .footer{text-align:center;padding:24px;font-size:.8rem;color:#94a3b8;background:#fff;border-top:1px solid #e2e8f0;margin-top:20px}
 @media print{
  html,body{print-color-adjust:exact;-webkit-print-color-adjust:exact;background:#fff!important}
@@ -600,13 +649,14 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
   };
 
   /* ══════════ 리포트 렌더러 ══════════ */
-  let charts=[];
+  let charts=[], igChart=null, igIdx=0, igR=null, qAnchorCache=null, igPdfDoc=null, igPageCanvasCache={}, igCropCache={};
   const GC=['rgba(30,64,175,.85)','rgba(59,130,246,.8)','rgba(16,185,129,.8)','rgba(245,158,11,.8)','rgba(239,68,68,.8)'];
   function mk(cid,cfg){ const c=document.getElementById(cid); if(c) charts.push(new Chart(c,cfg)); }
   function esc(s){ return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
   function renderReport(R){
     charts.forEach(c=>c.destroy()); charts=[];
+    qAnchorCache=null; igPdfDoc=null; igPageCanvasCache={}; igCropCache={};
     Chart.defaults.font.family="'Apple SD Gothic Neo','Noto Sans KR','맑은 고딕',sans-serif";
     Chart.defaults.color='#374151';
     const av=R.available, m=R.meta, s=R.stats||{};
@@ -691,6 +741,20 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       h+=`<div class="chart-card" style="margin-top:20px"><h3>문항 특성 지도 — 곤란도 × 변별도</h3><div style="text-align:center;font-size:.82rem;color:#64748b;margin-bottom:12px"><span style="color:#15803d;font-weight:600">오른쪽 위</span>=이상적 · <span style="color:#dc2626;font-weight:600">왼쪽 아래</span>=재검토 대상</div><div class="chart-wrapper" style="height:440px"><canvas id="cMap"></canvas></div></div>`;
       h+=`</div>`;
     }
+    // 7b. 문항별 등급 분석 (문항 하나씩, 등급별 정답률·선택 분포)
+    if(av.itemGrade){
+      h+=sec(ic(),'문항별 등급 분석');
+      h+=`<div class="chart-card"><p style="font-size:.85rem;color:#475569;margin-bottom:14px">문항을 하나씩 골라 <b>등급별 정답률</b>과 <b>등급별 선지 선택 분포</b>를 확인합니다. (개인 정답표 표본 ${R.sample.N}명 기준)</p>`+
+        `<div class="ig-bar"><button class="ig-navbtn" id="igPrev">◀ 이전 문항</button>`+
+        `<select id="igSelect">`+R.itemGrade.map((it,i)=>`<option value="${i}">Q${it.q} (정답률 ${it.rate}%)</option>`).join('')+`</select>`+
+        `<button class="ig-navbtn" id="igNext">다음 문항 ▶</button><span class="ig-meta" id="igMeta"></span></div>`+
+        `<div class="legend-row"><span class="legend-item"><span class="legend-dot" style="background:#f0fdf4;border:1px solid #bbf7d0"></span>정답 선지</span><span class="legend-item"><span class="legend-dot" style="background:#fef2f2;border:1px solid #fecaca"></span>그 등급이 가장 많이 고른 선지</span><span class="legend-item">★ = 등급별 최다 선택 선지</span></div>`+
+        (examPdf
+          ? `<div class="ig-layout"><div class="ig-qimg-wrap" id="igQImgWrap"><div class="ig-qloading">문항 이미지를 불러오는 중…</div></div>`+
+            `<div><div class="chart-wrapper" style="height:220px"><canvas id="cIgRate"></canvas></div><div id="igTableWrap" style="margin-top:14px"></div></div></div>`
+          : `<div class="two-col"><div class="chart-wrapper" style="height:260px"><canvas id="cIgRate"></canvas></div><div id="igTableWrap"></div></div>`)+
+        `</div></div>`;
+    }
     // 8. 인사이트 + 세특
     if(av.items){
       h+=sec(ic(),'추가 인사이트');
@@ -711,13 +775,120 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       (av.scores?'<li>성적 일람표 → 전체 현황·점수/등급 분포·반별 비교</li>':'')+
       (av.items?'<li>문항분석표 → 문항별 정답률·오답 매력도</li>':'')+
       (av.heatmap?'<li>개인 정답표 → 변별도·KR-20 신뢰도·등급별 정답률·세특 명단</li>':'')+
+      (av.itemGrade?'<li>개인 정답표 → 문항별 등급 분석(등급별 정답률·선지 선택 분포)</li>':'')+
       `</ul>`+
       ((!av.heatmap)?'<div style="margin-top:10px;color:#b45309">💡 <b>개인 정답표(정오표)</b>를 추가하면 변별도·신뢰도·세특 명단이 더해집니다.</div>':'')+
       `</div></div>`;
     h+=`</div><div class="footer">${esc(title)} · NEIS 문항 분석 리포트 생성기 · 브라우저 오프라인 생성</div>`;
     $('reportBody').innerHTML=h;
     drawCharts(R);
+    igR = R;
     wireAnnotateButton(R);
+    wireItemGrade(R);
+  }
+
+  /* ── 문항별 등급 분석(문항 하나씩 탐색) ── */
+  function wireItemGrade(R){
+    const sel=document.getElementById('igSelect');
+    if(!sel) return;
+    igIdx=0;
+    const prev=document.getElementById('igPrev'), next=document.getElementById('igNext');
+    sel.onchange=()=>{ igIdx=+sel.value; renderItemGradeView(R,igIdx); };
+    prev.onclick=()=>{ igIdx=(igIdx-1+R.itemGrade.length)%R.itemGrade.length; renderItemGradeView(R,igIdx); };
+    next.onclick=()=>{ igIdx=(igIdx+1)%R.itemGrade.length; renderItemGradeView(R,igIdx); };
+    renderItemGradeView(R,igIdx);
+  }
+  function renderItemGradeView(R,idx){
+    const it=R.itemGrade[idx];
+    document.getElementById('igSelect').value=idx;
+    document.getElementById('igMeta').innerHTML=`정답 <b>${it.ans}번</b> · 전체 정답률 <b>${it.rate}%</b>${it.disc!=null?' · 변별도 <b>'+it.disc.toFixed(2)+'</b>':''}`;
+    document.getElementById('igTableWrap').innerHTML=renderItemGradeTable(it);
+    const canvas=document.getElementById('cIgRate');
+    if(igChart){ igChart.destroy(); igChart=null; }
+    if(!canvas) return;
+    igChart=new Chart(canvas,{type:'bar',data:{labels:['1등급','2등급','3등급','4등급','5등급'],datasets:[{data:it.grades.map(g=>g.rate),backgroundColor:GC,borderRadius:6,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'정답률 '+(c.raw!=null?c.raw:'-')+'%',afterLabel:c=>'인원 '+it.grades[c.dataIndex].n+'명'}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,max:100,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:v=>v+'%'}}}}});
+    renderQuestionImage(idx);
+  }
+  function renderItemGradeTable(it){
+    const ans=it.ans;
+    const head=[1,2,3,4,5].map(c=>`<th class="${c===ans?'ig-ans':''}">${c}번${c===ans?'<br><span style="font-size:.66rem">(정답)</span>':''}</th>`).join('');
+    const rows=it.grades.map(g=>{
+      const cells=[1,2,3,4,5].map(c=>{
+        const isAns=c===ans, isTop=(c===g.top && g.n>0);
+        const cls=isAns?'ig-ans':(isTop?'ig-topwrong':'');
+        const star=isTop?'<span class="ig-star"> ★</span>':'';
+        return `<td class="${cls}">${g.n?g.dist[c-1]+'명':'-'}${star}<br><span class="ig-n">${g.n?g.pct[c-1]+'%':''}</span></td>`;
+      }).join('');
+      const rc=g.rate==null?'':g.rate>=70?'rate-high':g.rate>=50?'rate-mid':'rate-low';
+      return `<tr><td><span class="rank-badge" style="background:${GC[g.g-1]}">${g.g}등급</span></td><td>${g.n}명</td>${cells}<td class="${rc}">${g.rate!=null?g.rate+'%':'-'}</td></tr>`;
+    }).join('');
+    return `<div class="table-wrap"><div class="table-scroll"><table class="ig-table"><thead><tr><th>등급</th><th>인원</th>${head}<th>정답률</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+
+  /* ── 문항별 등급 분석: 문제지 PDF에서 해당 문항 캡처 ── */
+  async function getQuestionAnchors(){
+    if(qAnchorCache) return qAnchorCache;
+    if(!examPdf || !igR) return null;
+    ensurePdfWorker();
+    qAnchorCache = await detectQuestionAnchors(examPdf.bytes, igR.items.length);
+    return qAnchorCache;
+  }
+  async function getIgPdfDoc(){
+    if(igPdfDoc) return igPdfDoc;
+    ensurePdfWorker();
+    igPdfDoc = await pdfjsLib.getDocument({data: examPdf.bytes.slice()}).promise;
+    return igPdfDoc;
+  }
+  async function getPageCanvas(doc,pageIndex){
+    if(igPageCanvasCache[pageIndex]) return igPageCanvasCache[pageIndex];
+    const page = await doc.getPage(pageIndex+1);
+    const vp = page.getViewport({scale:2.2});
+    const canvas = document.createElement('canvas');
+    canvas.width=Math.ceil(vp.width); canvas.height=Math.ceil(vp.height);
+    await page.render({canvasContext:canvas.getContext('2d'), viewport:vp}).promise;
+    const rec={canvas:canvas, vp:vp};
+    igPageCanvasCache[pageIndex]=rec;
+    return rec;
+  }
+  async function renderQuestionCrop(qs,idx){
+    if(igCropCache[idx]) return igCropCache[idx];
+    const q=qs[idx], nextQ=qs[idx+1];
+    const doc = await getIgPdfDoc();
+    const {canvas:pageCanvas, vp} = await getPageCanvas(doc,q.page);
+    const pw=q.pw, thresh=pw/2;
+    const xs=qs.map(c=>c.x), twoCol=(Math.max.apply(null,xs)-Math.min.apply(null,xs))>pw*0.3;
+    const isLeft=q.x<thresh;
+    const leftEdge = twoCol ? (isLeft?20:thresh+6) : 20;
+    const rightEdge = twoCol ? (isLeft?thresh-6:pw-20) : pw-20;
+    const topPdf = q.y + q.size*1.8;
+    let bottomPdf = 36;
+    if(nextQ && nextQ.page===q.page && (nextQ.x<thresh)===isLeft) bottomPdf = nextQ.y + nextQ.size*1.2;
+    const p1=vp.convertToViewportPoint(leftEdge,topPdf), p2=vp.convertToViewportPoint(rightEdge,bottomPdf);
+    const cx=Math.max(0,Math.min(p1[0],p2[0])), cy=Math.max(0,Math.min(p1[1],p2[1]));
+    const cw=Math.min(pageCanvas.width-cx, Math.abs(p2[0]-p1[0])), ch=Math.min(pageCanvas.height-cy, Math.abs(p2[1]-p1[1]));
+    const out=document.createElement('canvas');
+    out.width=Math.max(1,Math.round(cw)); out.height=Math.max(1,Math.round(ch));
+    out.getContext('2d').drawImage(pageCanvas, cx,cy,cw,ch, 0,0, out.width,out.height);
+    igCropCache[idx]=out;
+    return out;
+  }
+  async function renderQuestionImage(idx){
+    const wrap=document.getElementById('igQImgWrap');
+    if(!wrap) return;
+    wrap.innerHTML='<div class="ig-qloading">문항 이미지를 불러오는 중…</div>';
+    try{
+      const det = await getQuestionAnchors();
+      if(igIdx!==idx) return;
+      if(!det || !det.qs){ wrap.innerHTML='<div class="ig-qnote">'+esc((det&&det.reason)||'문항 인식에 실패했습니다.')+'</div>'; return; }
+      const canvas = await renderQuestionCrop(det.qs, idx);
+      if(igIdx!==idx) return;
+      wrap.innerHTML='';
+      wrap.appendChild(canvas);
+    }catch(err){
+      if(igIdx!==idx) return;
+      wrap.innerHTML='<div class="ig-qnote">이미지를 불러오지 못했습니다: '+esc(err.message)+'</div>';
+      console.error(err);
+    }
   }
 
   /* ── 시험지 주석(배지) 기능 ── */
@@ -729,8 +900,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       abtn.disabled = true;
       st.innerHTML = '<span class="s-ok">문항 위치를 찾는 중…</span>';
       try{
-        ensurePdfWorker();
-        const det = await detectQuestionAnchors(examPdf.bytes, R.items.length);
+        const det = await getQuestionAnchors();
         if(!det.qs){ st.innerHTML = '<span class="s-err">'+esc(det.reason)+'</span>'; abtn.disabled=false; return; }
         st.innerHTML = '<span class="s-ok">배지를 그리는 중…</span>';
         const outBytes = await buildAnnotatedPdf(examPdf.bytes, det.qs, R.items);
