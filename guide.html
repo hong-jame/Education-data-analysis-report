@@ -1,0 +1,70 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;background:#fff;width:860px;padding:34px 40px;color:#1e293b}
+.head{background:linear-gradient(135deg,#0f172a,#14532d 55%,#16a34a);color:#fff;border-radius:16px;padding:24px 28px;text-align:center;margin-bottom:22px}
+.head h1{font-size:1.7rem;font-weight:800;letter-spacing:-.5px}
+.head p{opacity:.85;margin-top:6px;font-size:.92rem}
+.privacy{background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px 18px;font-size:.92rem;color:#065f46;line-height:1.6;margin-bottom:22px;font-weight:600}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px}
+.step{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:20px 18px;position:relative}
+.step .n{width:34px;height:34px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;margin-bottom:12px}
+.step h3{font-size:1.02rem;font-weight:700;color:#0f172a;margin-bottom:8px}
+.step p{font-size:.86rem;line-height:1.6;color:#475569}
+.step .big{font-size:1.9rem;text-align:center;margin:6px 0}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.box{border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px}
+.box h4{font-size:.98rem;font-weight:800;margin-bottom:10px;color:#0f172a;display:flex;align-items:center;gap:7px}
+.box ul{margin-left:2px;list-style:none}
+.box li{font-size:.85rem;line-height:1.75;color:#334155;padding-left:18px;position:relative}
+.box li::before{content:'•';position:absolute;left:4px;color:#16a34a;font-weight:800}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:4px}
+.req{background:#dcfce7;color:#15803d}.opt{background:#fef3c7;color:#92400e}
+.warn{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;font-size:.85rem;color:#92400e;line-height:1.7}
+.warn b{color:#b45309}
+.foot{text-align:center;font-size:.78rem;color:#94a3b8;margin-top:20px}
+.kbd{background:#0f172a;color:#fff;border-radius:6px;padding:2px 8px;font-size:.8rem;font-weight:700}
+</style></head><body>
+<div class="head">
+  <h1>📊 NEIS 문항 분석 리포트 생성기 — 사용설명서</h1>
+  <p>NEIS 성적·문항 파일을 넣으면 시각화 분석 보고서가 자동으로 만들어집니다</p>
+</div>
+
+<div class="privacy">🔒 안심하세요 — 모든 처리는 <b>선생님 컴퓨터(브라우저) 안에서만</b> 이루어집니다. 학생 정보는 인터넷으로 전송되지 않고, 서버에 저장되지도 않습니다. (인터넷을 꺼도 작동합니다.)</div>
+
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="big">🖱️</div><h3>프로그램 열기</h3><p><b>「문항분석 리포트 생성기.html」</b> 파일을 더블클릭하면 <b>크롬·엣지</b> 브라우저로 열립니다.</p></div>
+  <div class="step"><div class="n">2</div><div class="big">📁</div><h3>파일 끌어다 놓기</h3><p>NEIS에서 받은 엑셀 파일을 화면의 상자에 <b>드래그</b>하거나 클릭해서 선택합니다. (여러 개 한 번에)</p></div>
+  <div class="step"><div class="n">3</div><div class="big">📈</div><h3>생성 클릭</h3><p><span class="kbd">분석 리포트 생성</span> 버튼을 누르면 끝! <b>PDF 저장</b> 버튼으로 저장·인쇄할 수 있습니다.</p></div>
+</div>
+
+<div class="row">
+  <div class="box">
+    <h4>📎 넣을 파일 (NEIS에서 내려받기)</h4>
+    <ul>
+      <li>성취도 <b>성적 일람표</b><span class="tag req">필수</span></li>
+      <li><b>문항분석표</b><span class="tag req">필수</span></li>
+      <li>개인별 <b>정답표(정오표)</b><span class="tag opt">선택</span> → 변별도·신뢰도·세특 명단</li>
+      <li>문항정답표(정답률비교표)<span class="tag opt">선택</span></li>
+      <li>시험 문제지 <b>PDF</b>(한글에서 저장)<span class="tag opt">선택</span> → 문항마다 정답률·변별도 배지 표시</li>
+    </ul>
+    <p style="font-size:.8rem;color:#94a3b8;margin-top:8px">※ 가진 파일만 넣어도 됩니다. 없는 분석은 자동으로 생략돼요.</p>
+  </div>
+  <div class="box">
+    <h4>📊 나오는 결과</h4>
+    <ul>
+      <li>전체 현황·표준편차 해석</li>
+      <li>점수/등급 분포 + <b>등급 컷 점수</b></li>
+      <li>문항별 정답률·<b>오답 매력도</b> 분석</li>
+      <li><b>변별도·신뢰도(KR-20)</b>·문항 특성 지도</li>
+      <li><b>세특(생기부) 코멘트</b> + 정답자 명단</li>
+    </ul>
+  </div>
+</div>
+
+<div class="warn">
+  ⚠️ <b>이것만 기억하세요</b> &nbsp;·&nbsp; ① <b>크롬 또는 엣지</b>로 여세요(인터넷 익스플로러 ✕) &nbsp;·&nbsp; ② PC에서 사용하세요 &nbsp;·&nbsp; ③ 파일이 잘 안 열리면 파일을 <b>바탕화면</b>에 옮긴 뒤 다시 더블클릭해 보세요.
+</div>
+
+<div class="foot">문의는 배포해 주신 선생님께 · 이 프로그램은 설치가 필요 없는 단일 파일입니다</div>
+</body></html>
