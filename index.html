@@ -269,15 +269,20 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
 
   /* ── 협의록용: 예상난이도 vs 실제정답률 15%p 이상 차이나는 문항 ── */
-  const DIFF_ANCHOR = { '쉬움': 75, '보통': 50, '어려움': 25 };
+  /* 실제 정답률이 예상 난이도 구간(쉬움 75%이상·보통 26~74%·어려움 25%이하) "안"에 있으면 예측이 맞은 것 → 차이 0.
+     구간을 벗어난 만큼만 차이로 계산해 threshold(기본 15%p) 이상일 때만 표시 */
+  const DIFF_BAND = { '쉬움': [75, 100], '보통': [26, 74], '어려움': [0, 25] };
   function difficultyMismatch(items, expected, threshold) {
     threshold = threshold == null ? 15 : threshold;
     const out = [];
     items.forEach(it => {
       const lab = expected[it.q];
-      const anchor = lab && DIFF_ANCHOR[lab];
-      if (anchor == null) return;
-      if (Math.abs(it.rate - anchor) >= threshold) out.push({ q: it.q, expected: lab, rate: it.rate, dist: it.dist, ans: it.ans });
+      const band = lab && DIFF_BAND[lab];
+      if (!band) return;
+      let diff = 0;
+      if (it.rate < band[0]) diff = band[0] - it.rate;
+      else if (it.rate > band[1]) diff = it.rate - band[1];
+      if (diff >= threshold) out.push({ q: it.q, expected: lab, rate: it.rate, dist: it.dist, ans: it.ans, diff: r1(diff) });
     });
     return out;
   }
