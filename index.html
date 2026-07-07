@@ -631,7 +631,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
 <div id="app" class="intro-wrap">
   <div class="intro-head">
     <h1>📊 NEIS 문항 분석 리포트 생성기</h1>
-    <p>NEIS에서 내려받은 성적·문항 파일을 넣으면, 시각화된 문항 분석 보고서를 자동으로 만들어 줍니다.</p>
+    <p>NEIS에서 내려받은 성적·문항 파일을 넣으면, 시각화된 문항 분석 보고서와 결과분석 협의록 자료까지 자동으로 만들어 줍니다.</p>
   </div>
   <div class="privacy">
     <span style="font-size:1.2rem">🔒</span>
@@ -651,8 +651,22 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
   </div>
 
   <div class="panel">
+    <h3>2️⃣ NEIS 파일 넣기</h3>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-ico">📁</div>
+      <div class="dz-main">여기로 파일을 끌어다 놓거나 클릭해서 선택</div>
+      <div class="dz-sub">.xlsx / .xls 여러 개 한 번에 · NEIS에서 받은 파일 그대로<br>(선택) 시험 문제지 <b>PDF</b>도 함께 넣으면 문항 위에 정답률·변별도 배지 표시</div>
+      <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.pdf" style="display:none">
+    </div>
+    <div class="filelist" id="filelist"></div>
+    <div class="needlist" id="needlist"></div>
+    <button class="btn-run" id="runBtn" disabled>분석 리포트 생성</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="panel">
     <h3>3️⃣ 결과분석 협의록 자료 입력 (선택)</h3>
-    <p style="font-size:.82rem;color:#64748b;margin-bottom:14px">교과협의록에 쓰이는 값을 미리 입력해두면, 리포트에 협의록용 표·문장이 자동으로 채워집니다. 비워두면 해당 항목만 생략됩니다.</p>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:14px">필수 단계는 아닙니다 — 여기를 비워둬도 1·2단계만으로 바로 리포트가 만들어집니다. 교과협의록에 쓰이는 값을 미리 입력해두면, 리포트에 협의록용 표·문장이 자동으로 채워집니다.</p>
     <div class="field">
       <label><input type="checkbox" id="bandEnable"> 성취수준별 분포(성취평가제 A~E) 포함</label>
     </div>
@@ -668,35 +682,21 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       </div>
       <div id="bandCutsWrap" class="bandcutbar"></div>
     </div>
-    <div id="itemDiffWrap"><div style="font-size:.82rem;color:#94a3b8">문항분석표를 넣으면 문항별 예상 난이도 입력칸이 나타납니다.</div></div>
-  </div>
-
-  <div class="panel">
-    <h3>2️⃣ NEIS 파일 넣기</h3>
-    <div class="dropzone" id="dropzone">
-      <div class="dz-ico">📁</div>
-      <div class="dz-main">여기로 파일을 끌어다 놓거나 클릭해서 선택</div>
-      <div class="dz-sub">.xlsx / .xls 여러 개 한 번에 · NEIS에서 받은 파일 그대로<br>(선택) 시험 문제지 <b>PDF</b>도 함께 넣으면 문항 위에 정답률·변별도 배지 표시</div>
-      <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.pdf" style="display:none">
-    </div>
-    <div class="filelist" id="filelist"></div>
-    <div class="needlist" id="needlist"></div>
-    <button class="btn-run" id="runBtn" disabled>분석 리포트 생성</button>
-    <div class="status" id="status"></div>
+    <div id="itemDiffWrap"><div style="font-size:.82rem;color:#94a3b8">문항분석표를 넣으면 문항별 예상 난이도 입력칸이 나타납니다. (문항정보표를 함께 넣으면 자동으로 채워집니다)</div></div>
   </div>
 
   <div class="panel" style="background:#f8fafc">
     <h3>📎 어떤 파일이 필요한가요?</h3>
     <div class="needlist">
       <span class="req">필수</span> 성적(성취도) 일람표, 문항분석표 → 성적분포·문항별 정답률·오답 매력도<br>
-      <span class="opt">선택</span> 개인별 정답표(정오표) → 변별도·신뢰도·등급별 정답률·세특 명단<br>
+      <span class="opt">선택</span> 개인별 정답표(정오표) → 변별도·신뢰도·등급별 정답률·문항별 등급 분석·세특 명단<br>
       <span class="opt">선택</span> 문항정답표(정답률비교표) → 반별 문항 정답률<br>
       <span class="opt">선택</span> 문항정보표 → 문항별 예상 난이도 자동 입력(협의록 자료용)<br>
-      <span class="opt">선택</span> 시험 문제지 <b>PDF</b>(한글에서 저장) → 문항 위에 정답률·변별도 배지 표시한 주석판 PDF 다운로드<br>
+      <span class="opt">선택</span> 시험 문제지 <b>PDF</b>(한글에서 저장) → 문항 위에 정답률·변별도 배지 표시한 주석판 PDF 다운로드, 문항별 등급 분석에 실제 문항 이미지 표시<br>
       <span style="color:#94a3b8;font-size:.8rem">※ 가진 파일만 넣어도 됩니다. 없는 분석은 자동으로 생략됩니다.</span>
     </div>
   </div>
-  <div style="text-align:center;font-size:.78rem;color:#94a3b8;margin-top:10px">v1 · 브라우저 오프라인 처리 · Chart.js·SheetJS 내장</div>
+  <div style="text-align:center;font-size:.78rem;color:#94a3b8;margin-top:10px">v2 · 브라우저 오프라인 처리 · Chart.js·SheetJS·pdf.js·pdf-lib 내장</div>
 </div>
 
 <!-- ══ 리포트 화면 ══ -->
