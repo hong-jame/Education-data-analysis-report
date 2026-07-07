@@ -919,8 +919,11 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
         const dm=R.diffMismatch;
         h+=`<div class="chart-card" style="margin-bottom:20px"><h3>예상 난이도와 실제 정답률 차이가 있는 문항</h3>`+
           `<div style="font-size:.8rem;color:#64748b;margin-bottom:10px">기준: 쉬움 75%↑ · 보통 26~74% · 어려움 25%↓ 에서 15%p 이상 벗어난 문항</div>`+
-          (dm.length? `<div class="table-wrap"><div class="table-scroll"><table id="cnDiff"><thead><tr><th>문항 번호</th><th>예상 난이도</th><th>실제 정답률</th><th>①</th><th>②</th><th>③</th><th>④</th><th>⑤</th><th>정답</th></tr></thead><tbody>`+
-            dm.map(it=>`<tr><td>${it.q}</td><td>${it.expected}</td><td>${it.rate.toFixed(1)}%</td>`+it.dist.map((d,i)=>`<td class="${i+1===it.ans?'rate-high':''}">${d}</td>`).join('')+`<td>${it.ans}번</td></tr>`).join('')+
+          (dm.length? `<div class="table-wrap"><div class="table-scroll"><table id="cnDiff"><thead>`+
+            `<tr><th style="position:static" rowspan="2">문항 번호</th><th style="position:static" rowspan="2">예상 난이도</th><th style="position:static" rowspan="2">실제 정답률</th><th style="position:static" colspan="5">답안별 응답 인원</th><th style="position:static" rowspan="2">정답</th></tr>`+
+            `<tr><th style="position:static">①</th><th style="position:static">②</th><th style="position:static">③</th><th style="position:static">④</th><th style="position:static">⑤</th></tr>`+
+            `</thead><tbody>`+
+            dm.map(it=>`<tr><td>${it.q}</td><td>${it.expected}</td><td>${it.rate.toFixed(1)}</td>`+it.dist.map(d=>`<td>${d}</td>`).join('')+`<td>${it.ans}</td></tr>`).join('')+
             `</tbody></table></div></div><button class="copy-btn" data-c="cnDiff" style="position:static;margin-top:10px">표 복사</button>`
             : `<div class="info-note">기준(15%p) 이상 차이나는 문항이 없습니다.</div>`)+
           `</div>`;
