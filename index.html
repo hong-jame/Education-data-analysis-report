@@ -209,6 +209,45 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     return { labels, counts };
   }
 
+  /* ── 협의록용: 성취수준별(성취평가제) 절대등급 분포 ── */
+  /* cuts.length === labels.length-1 (등급 경계, 내림차순); 최하 등급은 마지막 컷 미만 전체를 흡수 */
+  function bandDist(scores, labels, cuts) {
+    const N = scores.length;
+    const counts = labels.map(() => 0);
+    scores.forEach(s => {
+      for (let i = 0; i < cuts.length; i++) { if (s >= cuts[i]) { counts[i]++; return; } }
+      counts[counts.length - 1]++;
+    });
+    return { labels, cuts, counts, ratios: counts.map(c => N ? r1(c / N * 100) : 0), N };
+  }
+  const ACHIEVEMENT_PRESETS = {
+    g12_5: { label: '1·2학년 5단계 (A~E+미도달)', labels: ['A', 'B', 'C', 'D', 'E', '미도달'], cuts: [90, 80, 70, 60, 40] },
+    g12_3: { label: '1·2학년 3단계 (A~C+미도달)', labels: ['A', 'B', 'C', '미도달'], cuts: [80, 60, 40] },
+    g3_5: { label: '3학년 5단계 (A~E, 미도달 없음)', labels: ['A', 'B', 'C', 'D', 'E'], cuts: [90, 80, 70, 60] },
+    g3_3: { label: '3학년 3단계 (A~C, 미도달 없음)', labels: ['A', 'B', 'C'], cuts: [80, 60] }
+  };
+
+  /* ── 협의록용: 기준점수 이상/미만 인원·비율 계산기 ── */
+  function countThreshold(scores, x, mode) {
+    const N = scores.length;
+    const n = mode === 'lt' ? scores.filter(s => s < x).length : scores.filter(s => s >= x).length;
+    return { n, pct: N ? r1(n / N * 100) : 0, N };
+  }
+
+  /* ── 협의록용: 예상난이도 vs 실제정답률 15%p 이상 차이나는 문항 ── */
+  const DIFF_ANCHOR = { '쉬움': 75, '보통': 50, '어려움': 25 };
+  function difficultyMismatch(items, expected, threshold) {
+    threshold = threshold == null ? 15 : threshold;
+    const out = [];
+    items.forEach(it => {
+      const lab = expected[it.q];
+      const anchor = lab && DIFF_ANCHOR[lab];
+      if (anchor == null) return;
+      if (Math.abs(it.rate - anchor) >= threshold) out.push({ q: it.q, expected: lab, rate: it.rate, dist: it.dist, ans: it.ans });
+    });
+    return out;
+  }
+
   /* ── 정오표 표본 분석: 변별도, KR-20, 등급별 정답률, 킬러 명단 ── */
   function analyzeSample(jeongo, cutsInfo, hardQs) {
     const st = jeongo.students.filter(s => s.raw != null && s.corr.some(x => x)); const N = st.length;
@@ -266,7 +305,8 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
 
   /* ── 메인: 파일 aoa 목록 → 결과 객체 ── */
-  function analyze(files, examName) {
+  function analyze(files, examName, opts) {
+    opts = opts || {};
     const buckets = { sungjeok: [], jeongdap: [], bunseok: [], jeongo: [], unknown: [] };
     files.forEach(f => buckets[classify(f.aoa)].push(f.aoa));
     const warn = [];
@@ -287,16 +327,29 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       result.meta.N = N;
       cutsInfo = gradeCuts(scores);
       result.stats = { mean: r1(scores.reduce((a, b) => a + b, 0) / N), max: Math.max.apply(null, scores), min: Math.min.apply(null, scores), sd: r1(pstdev(scores)), median: r1(median(scores)) };
+      result.stats.perfectN = scores.filter(s => s === meta.max).length;
+      result.stats.minN = scores.filter(s => s === result.stats.min).length;
+      result.stats.expectedAvg = (opts.expectedAvg != null && opts.expectedAvg !== '' && !isNaN(+opts.expectedAvg)) ? +opts.expectedAvg : null;
       result.hist = histogram(scores, meta.max);
       result.grades = { counts: cutsInfo.counts, ratios: cutsInfo.ratios, cuts: cutsInfo.cuts, ranges: cutsInfo.ranges };
       result.classes = classes;
+      result.scores = scores;
       result.available.scores = true;
+      if (opts.bandLabels && opts.bandCuts) {
+        result.achievement = bandDist(scores, opts.bandLabels, opts.bandCuts);
+        result.available.achievement = true;
+      }
     }
     if (items && items.length) {
       result.items = items;
       result.stats = result.stats || {};
       result.stats.avgItemRate = r1(items.reduce((a, b) => a + b.rate, 0) / items.length);
       result.available.items = true; result.available.distractor = true;
+      if (opts.itemDifficulty && Object.keys(opts.itemDifficulty).length) {
+        result.diffMismatch = difficultyMismatch(items, opts.itemDifficulty, opts.diffThreshold);
+        result.itemDifficulty = opts.itemDifficulty;
+        result.available.diffMismatch = true;
+      }
     }
     // 정오표 표본
     if (buckets.jeongo.length && cutsInfo && items) {
@@ -319,7 +372,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     return result;
   }
 
-  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, analyze, gradeCuts, histogram, analyzeItemGrade };
+  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, analyze, gradeCuts, histogram, analyzeItemGrade, bandDist, countThreshold, difficultyMismatch, ACHIEVEMENT_PRESETS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.NEIS = api;
 })(typeof window !== 'undefined' ? window : this);
@@ -403,6 +456,14 @@ body{font-family:'Apple SD Gothic Neo','Noto Sans KR','맑은 고딕',sans-serif
 .status .s-ok{color:#15803d}.status .s-warn{color:#b45309}.status .s-err{color:#dc2626}
 .needlist{font-size:.83rem;color:#475569;line-height:1.9;margin:6px 0 0 4px}
 .needlist .req{color:#15803d;font-weight:700}.needlist .opt{color:#94a3b8}
+.field input[type=number]{width:90px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:.9rem}
+.field select{padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:.9rem;background:#fff}
+.diffgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-top:8px}
+.diffcell{display:flex;align-items:center;gap:6px;font-size:.8rem;color:#475569}
+.diffcell select{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:.76rem;background:#fff}
+.bandcutbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.bandcutbar .bc-item{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600;color:#475569}
+.bandcutbar .bc-item input{width:58px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;text-align:center}
 /* ── 리포트 화면(생명과학 리포트 스타일) ── */
 #report{display:none}
 .rep-bar{position:sticky;top:0;z-index:50;background:#0f172a;color:#fff;padding:12px 20px;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 2px 10px rgba(0,0,0,.2)}
@@ -528,6 +589,31 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       <label>시험명 (비워두면 파일에서 자동 추출)</label>
       <input type="text" id="examName" placeholder="예: 2026학년도 1학기 2차 정기고사 · 2학년 생명과학">
     </div>
+    <div class="field">
+      <label>예상평균 (선택 · 결과분석 협의록 자료에 사용)</label>
+      <input type="number" id="expectedAvg" placeholder="예: 65">
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>3️⃣ 결과분석 협의록 자료 입력 (선택)</h3>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:14px">교과협의록에 쓰이는 값을 미리 입력해두면, 리포트에 협의록용 표·문장이 자동으로 채워집니다. 비워두면 해당 항목만 생략됩니다.</p>
+    <div class="field">
+      <label><input type="checkbox" id="bandEnable"> 성취수준별 분포(성취평가제 A~E) 포함</label>
+    </div>
+    <div id="bandConfigWrap" style="display:none;margin-bottom:16px">
+      <div class="field">
+        <label>등급 기준</label>
+        <select id="bandPreset">
+          <option value="g12_5">1·2학년 5단계 (A~E+미도달)</option>
+          <option value="g12_3">1·2학년 3단계 (A~C+미도달)</option>
+          <option value="g3_5">3학년 5단계 (A~E, 미도달 없음)</option>
+          <option value="g3_3">3학년 3단계 (A~C, 미도달 없음)</option>
+        </select>
+      </div>
+      <div id="bandCutsWrap" class="bandcutbar"></div>
+    </div>
+    <div id="itemDiffWrap"><div style="font-size:.82rem;color:#94a3b8">문항분석표를 넣으면 문항별 예상 난이도 입력칸이 나타납니다.</div></div>
   </div>
 
   <div class="panel">
@@ -636,12 +722,51 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
     need.push(`${examPdf?'✅':'⬜'} 시험 문제지 PDF <span class="opt">(선택·문항 위 배지)</span>`);
     $('needlist').innerHTML = (files.length||examPdf)? need.join('<br>') : '';
     $('runBtn').disabled = !(have.has('sungjeok')||have.has('bunseok'));
+    renderItemDiffInputs();
+  }
+
+  /* ── 협의록 자료: 성취등급 컷 편집 UI ── */
+  function renderBandCuts(key){
+    const preset = NEIS.ACHIEVEMENT_PRESETS[key];
+    $('bandCutsWrap').innerHTML = preset.cuts.map((c,i)=>
+      `<span class="bc-item"><label>${preset.labels[i]} 컷(이상)</label><input type="number" class="bandcut" value="${c}"></span>`
+    ).join('') + `<span style="color:#94a3b8;font-size:.78rem">그 아래는 자동 '${preset.labels[preset.labels.length-1]}'</span>`;
+  }
+  $('bandEnable').onchange = () => {
+    $('bandConfigWrap').style.display = $('bandEnable').checked ? '' : 'none';
+    if($('bandEnable').checked) renderBandCuts($('bandPreset').value);
+  };
+  $('bandPreset').onchange = () => renderBandCuts($('bandPreset').value);
+
+  /* ── 협의록 자료: 문항별 예상 난이도 입력칸 ── */
+  function renderItemDiffInputs(){
+    const wrap = $('itemDiffWrap');
+    const bf = files.find(f=>f.type==='bunseok' && f.aoa);
+    const items = bf ? NEIS.parseBunseok(bf.aoa) : null;
+    if(!items || !items.length){
+      wrap.innerHTML = '<div style="font-size:.82rem;color:#94a3b8">문항분석표를 넣으면 문항별 예상 난이도 입력칸이 나타납니다.</div>';
+      return;
+    }
+    wrap.innerHTML = `<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:4px">문항별 예상 난이도 (선택 · ${items.length}문항 · 15%p 이상 차이나는 문항만 협의록 표에 자동 표시)</label>`+
+      `<div class="diffgrid">`+items.map(it=>`<div class="diffcell"><span>Q${it.q}</span><select data-q="${it.q}" class="diffsel"><option value="">미정</option><option value="쉬움">쉬움</option><option value="보통">보통</option><option value="어려움">어려움</option></select></div>`).join('')+`</div>`;
   }
 
   $('runBtn').onclick = () => {
     const st=$('status'); st.innerHTML='<span class="s-ok">분석 중…</span>';
     try{
-      const R = NEIS.analyze(files.filter(f=>f.aoa), $('examName').value.trim());
+      const opts = {};
+      const ea = $('expectedAvg').value.trim(); if(ea) opts.expectedAvg = ea;
+      if($('bandEnable').checked){
+        const preset = NEIS.ACHIEVEMENT_PRESETS[$('bandPreset').value];
+        opts.bandLabels = preset.labels;
+        opts.bandCuts = Array.from(document.querySelectorAll('.bandcut')).map(inp=>+inp.value);
+      }
+      const diffSel = document.querySelectorAll('.diffsel');
+      if(diffSel.length){
+        const id = {}; diffSel.forEach(s=>{ if(s.value) id[+s.dataset.q]=s.value; });
+        if(Object.keys(id).length) opts.itemDifficulty = id;
+      }
+      const R = NEIS.analyze(files.filter(f=>f.aoa), $('examName').value.trim(), opts);
       if(!R.available.scores && !R.available.items){ st.innerHTML='<span class="s-err">성적 일람표 또는 문항분석표를 인식하지 못했습니다. 파일을 확인해 주세요.</span>'; return; }
       renderReport(R);
       $('app').style.display='none'; $('report').style.display='block'; window.scrollTo(0,0);
@@ -769,6 +894,52 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       if(av.names) h+=spedCard(R);
       h+=`</div>`;
     }
+    // 9. 결과분석 협의록 자료
+    if(av.scores){
+      h+=sec(ic(),'결과분석 협의록 자료');
+      h+=`<div class="info-note" style="margin-bottom:16px">📋 정기시험 결과분석 협의록 작성에 바로 쓸 수 있는 표·문장을 모아뒀습니다. 각 블록의 <b>복사</b> 버튼으로 협의록 문서에 붙여넣으세요.</div>`;
+      h+=`<div class="chart-card" style="margin-bottom:20px"><h3>평가 결과 개요</h3><div class="table-wrap"><div class="table-scroll"><table id="cnOverview"><thead><tr><th>예상평균</th><th>실제평균</th><th>최고점</th><th>최저점</th><th>최고-최저</th><th>100점 만점 인원</th></tr></thead><tbody><tr>`+
+        `<td>${s.expectedAvg!=null?s.expectedAvg+'점':'-'}</td><td>${s.mean}점</td><td>${s.max}점</td><td>${s.min}점(${s.minN}명)</td><td>${(s.max-s.min).toFixed(1)}</td><td>${s.perfectN}명</td>`+
+        `</tr></tbody></table></div></div><button class="copy-btn" data-c="cnOverview" style="position:static;margin-top:10px">표 복사</button></div>`;
+      if(R.classes && R.classes.length>1){
+        h+=`<div class="chart-card" style="margin-bottom:20px"><h3>반별 학급평균</h3><div class="table-wrap"><div class="table-scroll"><table id="cnClass"><tbody>`+
+          `<tr><td><b>반</b></td>`+R.classes.map(c=>`<td>${c.c}반</td>`).join('')+`</tr>`+
+          `<tr><td><b>학급평균</b></td>`+R.classes.map(c=>`<td>${c.avg}</td>`).join('')+`</tr>`+
+          `</tbody></table></div></div><button class="copy-btn" data-c="cnClass" style="position:static;margin-top:10px">표 복사</button></div>`;
+      }
+      if(av.achievement){
+        const A=R.achievement;
+        h+=`<div class="chart-card" style="margin-bottom:20px"><h3>성취수준별 분포 분석</h3><div class="table-wrap"><div class="table-scroll"><table id="cnBand"><tbody>`+
+          `<tr><td><b>급간</b></td>`+A.labels.map(l=>`<td>${l}</td>`).join('')+`<td><b>합</b></td></tr>`+
+          `<tr><td><b>인원(명)</b></td>`+A.counts.map(c=>`<td>${c}</td>`).join('')+`<td>${A.N}</td></tr>`+
+          `<tr><td><b>비율(%)</b></td>`+A.ratios.map(r=>`<td>${r}</td>`).join('')+`<td>100</td></tr>`+
+          `</tbody></table></div></div><button class="copy-btn" data-c="cnBand" style="position:static;margin-top:10px">표 복사</button></div>`;
+      }
+      if(av.diffMismatch){
+        const dm=R.diffMismatch;
+        h+=`<div class="chart-card" style="margin-bottom:20px"><h3>예상 난이도와 실제 정답률 차이가 있는 문항</h3>`+
+          `<div style="font-size:.8rem;color:#64748b;margin-bottom:10px">기준: 쉬움 75%↑ · 보통 26~74% · 어려움 25%↓ 에서 15%p 이상 벗어난 문항</div>`+
+          (dm.length? `<div class="table-wrap"><div class="table-scroll"><table id="cnDiff"><thead><tr><th>문항 번호</th><th>예상 난이도</th><th>실제 정답률</th><th>①</th><th>②</th><th>③</th><th>④</th><th>⑤</th><th>정답</th></tr></thead><tbody>`+
+            dm.map(it=>`<tr><td>${it.q}</td><td>${it.expected}</td><td>${it.rate.toFixed(1)}%</td>`+it.dist.map((d,i)=>`<td class="${i+1===it.ans?'rate-high':''}">${d}</td>`).join('')+`<td>${it.ans}번</td></tr>`).join('')+
+            `</tbody></table></div></div><button class="copy-btn" data-c="cnDiff" style="position:static;margin-top:10px">표 복사</button>`
+            : `<div class="info-note">기준(15%p) 이상 차이나는 문항이 없습니다.</div>`)+
+          `</div>`;
+      }
+      h+=`<div class="chart-card" style="margin-bottom:20px"><h3>기준점수 인원 계산기 (특이사항 작성용)</h3>`+
+        `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">`+
+        `<input type="number" id="cnThInput" value="${Math.round(s.mean)}" style="width:80px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit">점`+
+        `<select id="cnThMode" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit"><option value="gte">이상</option><option value="lt">미만</option></select>`+
+        `<span id="cnThResult" style="font-weight:700;color:#15803d;font-size:.95rem"></span>`+
+        `<button class="copy-btn" data-c="cnThSentence" style="position:static">문장 복사</button>`+
+        `</div><div id="cnThSentence" style="font-size:.82rem;color:#94a3b8;margin-top:10px"></div></div>`;
+      h+=`<div class="sped-card"><h4>🧾 협의록 서술형 항목 초안</h4><div class="sped-sub">아래 문장은 실측 데이터를 바탕으로 자동 생성된 초안입니다. 협의록에 붙여넣기 전에 내용을 검토·수정하세요.</div>`+
+        `<div class="sped-grid">`+
+        `<div class="sped-item"><button class="copy-btn" data-c="cnSpecial">복사</button><div class="sped-meta"><span class="sped-q">특이사항</span></div><div class="sped-text" id="cnSpecial">${consultSpecialNoteDraft(R)}</div></div>`+
+        `<div class="sped-item"><button class="copy-btn" data-c="cnImprove">복사</button><div class="sped-meta"><span class="sped-q">성적 향상 계획</span></div><div class="sped-text" id="cnImprove">${consultImprovementDraft(R)}</div></div>`+
+        (av.items?`<div class="sped-item"><button class="copy-btn" data-c="cnOpinion">복사</button><div class="sped-meta"><span class="sped-q">문항 분석 의견</span></div><div class="sped-text" id="cnOpinion">${consultOpinionDraft(R)}</div></div>`:'')+
+        `</div></div>`;
+      h+=`</div>`;
+    }
     // 데이터 출처
     h+=sec(ic(),'데이터 출처');
     h+=`<div class="info-note"><b>사용된 파일</b><ul style="margin:6px 0 0 18px;line-height:1.9">`+
@@ -785,6 +956,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
     igR = R;
     wireAnnotateButton(R);
     wireItemGrade(R);
+    wireConsultTools(R);
   }
 
   /* ── 문항별 등급 분석(문항 하나씩 탐색) ── */
@@ -889,6 +1061,76 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       wrap.innerHTML='<div class="ig-qnote">이미지를 불러오지 못했습니다: '+esc(err.message)+'</div>';
       console.error(err);
     }
+  }
+
+  /* ── 결과분석 협의록 자료: 임계값 계산기 + 의견 초안 ── */
+  function wireConsultTools(R){
+    const inp=document.getElementById('cnThInput'), mode=document.getElementById('cnThMode'), out=document.getElementById('cnThResult'), sent=document.getElementById('cnThSentence');
+    if(!inp || !R.scores) return;
+    const upd=()=>{
+      const x=+inp.value, m=mode.value;
+      const r=NEIS.countThreshold(R.scores, x, m);
+      out.textContent = `${r.n}명 (${r.pct}%)`;
+      sent.textContent = `${x}점 ${m==='gte'?'이상':'미만'}인 학생이 ${r.n}명(${r.pct}%)입니다.`;
+    };
+    inp.oninput=upd; mode.onchange=upd; upd();
+  }
+  function consultSpecialNoteDraft(R){
+    const s=R.stats;
+    const lines=[];
+    if(s.expectedAvg!=null){
+      lines.push(s.mean>=s.expectedAvg
+        ? `- 목표했던 ${s.expectedAvg}점 이상의 평균 점수를 얻었음(실제 평균 ${s.mean}점).`
+        : `- 목표했던 ${s.expectedAvg}점 평균에는 다소 못 미쳤음(실제 평균 ${s.mean}점).`);
+    }
+    if(R.classes && R.classes.length>1){
+      const sorted=[...R.classes].sort((a,b)=>b.avg-a.avg);
+      const best=sorted[0], worst=sorted[sorted.length-1];
+      lines.push(`- 최고반(${best.c}반, ${best.avg}점)과 최저반(${worst.c}반, ${worst.avg}점)의 평균 점수 차이가 ${(best.avg-worst.avg).toFixed(1)}점으로 나타남.`);
+    }
+    lines.push(`- 100점 만점자가 ${s.perfectN}명 있는 반면 최하점은 ${s.min}점(${s.minN}명)으로 나타나 상·하위권 성취 격차가 존재함.`);
+    if(R.grades){
+      const lowRatio=+(R.grades.ratios[3]+R.grades.ratios[4]).toFixed(1);
+      lines.push(`- 4~5등급(하위권) 비율이 ${lowRatio}%로 나타나, 해당 학생들에 대한 보충 지도가 필요할 것으로 판단됨.`);
+    }
+    return lines.join('<br>');
+  }
+  function consultImprovementDraft(R){
+    const s=R.stats, m=R.meta;
+    const lines=[];
+    if(R.classes && R.classes.length>1){
+      const gap=Math.max.apply(null,R.classes.map(c=>c.avg))-Math.min.apply(null,R.classes.map(c=>c.avg));
+      if(gap>=m.max*0.1) lines.push('- 학급별 맞춤형 수업 지도: 학급 간 평균 격차를 고려하여, 동일한 수업 내용이라도 용어·예시 선택을 학급 상황에 맞게 조정하여 학생들의 인지구조 체계화를 도모함.');
+    }
+    if(R.grades){
+      const lowRatio=R.grades.ratios[3]+R.grades.ratios[4];
+      if(lowRatio>=20) lines.push('- 기초 학력 보장 지도: 하위권 학생을 대상으로 핵심 개념 정리와 소규모 보충 학습 기회를 제공하여 학습 결손을 예방하고 최소 성취수준에 도달하도록 지도함.');
+    }
+    if(s.perfectN>=1) lines.push('- 상위권 심화 탐구 유도: 만점자 등 상위권 학생에게는 단순 문제 풀이를 넘어선 심화 탐구 과제나 동료 멘토링 기회를 제공하여 학습 동기를 유지함.');
+    if(R.diffMismatch && R.diffMismatch.length) lines.push('- 문항 분석 기반 피드백: 예상과 다른 정답률을 보인 문항의 오답 반응을 분석하여, 관련 개념에 대한 보충 설명과 재검토 시간을 제공함.');
+    lines.push('- 오개념 수정: 수업 내용에 대한 문제 풀이를 과제화하여, 직관을 통해 잘못 형성된 지식을 올바른 개념으로 바꾸는 인지적 과정을 거치도록 함.');
+    return lines.join('<br>');
+  }
+  function consultOpinionDraft(R){
+    const s=R.stats;
+    const lines=[];
+    if(s.expectedAvg!=null){
+      const diff=+(s.mean-s.expectedAvg).toFixed(1);
+      lines.push(Math.abs(diff)<=5
+        ? `• 실제 평균 점수(${s.mean}점)가 예상 평균 점수(${s.expectedAvg}점)에 근접하여 전반적으로 출제 의도가 적중함.`
+        : (diff>0
+          ? `• 실제 평균 점수(${s.mean}점)가 예상 평균 점수(${s.expectedAvg}점)보다 ${Math.abs(diff)}점 높게 나타나 예상보다 쉬웠던 것으로 판단됨.`
+          : `• 실제 평균 점수(${s.mean}점)가 예상 평균 점수(${s.expectedAvg}점)보다 ${Math.abs(diff)}점 낮게 나타나 예상보다 어려웠던 것으로 판단됨.`));
+    }
+    if(R.diffMismatch && R.diffMismatch.length){
+      const qs=R.diffMismatch.map(it=>it.q).join(', ');
+      lines.push(`• ${qs}번 문항은 예상 난이도와 실제 정답률의 차이가 커, 해당 문항에서 학생들이 보인 오답 반응을 점검하고 관련 개념에 대한 보충 설명이 필요함.`);
+    }
+    if(R.items && R.items.length){
+      const hardest=[...R.items].sort((a,b)=>a.rate-b.rate)[0];
+      lines.push(`• Q${hardest.q}은 정답률 ${hardest.rate.toFixed(1)}%로 가장 낮게 나타났으며, 다수 학생이 ${hardest.worst}번 선지를 선택함. 해당 개념에 대한 오개념 여부를 확인하여 추수 지도가 필요함.`);
+    }
+    return lines.join('<br>');
   }
 
   /* ── 시험지 주석(배지) 기능 ── */
