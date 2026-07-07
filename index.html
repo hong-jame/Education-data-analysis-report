@@ -65,6 +65,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
 
   function classify(aoa) {
     const t = aoa.map(r => r.map(S).join(' ')).join(' \n ');
+    if (t.replace(/\s/g, '').includes('문항정보표')) return 'jeongbo';
     if (t.includes('문항분석표')) return 'bunseok';
     if (t.includes('문항정답표') || t.includes('정답률비교표')) return 'jeongdap';
     if (t.includes('학생별') && t.includes('정답표')) return 'jeongo';
@@ -130,6 +131,39 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       let worst = 0, worstN = -1;
       dist.forEach((d, i) => { if (i + 1 !== ans && d > worstN) { worstN = d; worst = i + 1; } });
       items.push({ q: q, ans: ans, dist: dist, sum: sum, rate: r1(+rate), worst: worst, worstN: worstN });
+    }
+    items.sort((a, b) => a.q - b.q);
+    return items;
+  }
+
+  /* ── 문항정보표 → items[{q,difficulty,bj,ans,content,standard}] (출제자 사전 입력 난이도) ── */
+  function parseJeongbo(aoa) {
+    const rh = findRow(aoa, r => r.some(c => S(c) === '난이도'));
+    if (rh < 0) return null;
+    const H = aoa[rh].map(S);
+    const dCol = H.indexOf('난이도');
+    const qCol = H.findIndex(c => c.replace(/\s/g, '') === '문항번호');
+    const bjCol = H.indexOf('배점');
+    const ansCol = H.indexOf('정답');
+    const contentCol = H.findIndex(c => c.includes('내용영역'));
+    const stdCol = H.findIndex(c => c.includes('성취기준'));
+    if (dCol < 0 || qCol < 0) return null;
+    const items = [];
+    for (let r = rh + 2; r < aoa.length; r++) {
+      const row = aoa[r]; if (!row) continue;
+      const q = num(row[qCol]);
+      if (!(q != null && q === Math.floor(q) && q >= 1 && q <= 80)) continue;
+      let difficulty = null;
+      if (S(row[dCol]) === '○') difficulty = '어려움';
+      else if (S(row[dCol + 1]) === '○') difficulty = '보통';
+      else if (S(row[dCol + 2]) === '○') difficulty = '쉬움';
+      items.push({
+        q: q, difficulty: difficulty,
+        bj: bjCol >= 0 ? num(row[bjCol]) : null,
+        ans: ansCol >= 0 ? num(row[ansCol]) : null,
+        content: contentCol >= 0 ? S(row[contentCol]) : '',
+        standard: stdCol >= 0 ? S(row[stdCol]) : ''
+      });
     }
     items.sort((a, b) => a.q - b.q);
     return items;
@@ -307,7 +341,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   /* ── 메인: 파일 aoa 목록 → 결과 객체 ── */
   function analyze(files, examName, opts) {
     opts = opts || {};
-    const buckets = { sungjeok: [], jeongdap: [], bunseok: [], jeongo: [], unknown: [] };
+    const buckets = { sungjeok: [], jeongdap: [], bunseok: [], jeongo: [], jeongbo: [], unknown: [] };
     files.forEach(f => buckets[classify(f.aoa)].push(f.aoa));
     const warn = [];
     const meta = { examName: examName || '', subject: '', max: 100, date: '' };
@@ -320,6 +354,18 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     if (buckets.bunseok[0]) { items = parseBunseok(buckets.bunseok[0]); }
     if (!scores) warn.push('성적 일람표를 찾지 못했습니다.');
     if (!items) warn.push('문항분석표를 찾지 못했습니다.');
+
+    // 문항정보표(있으면): 문항별 사전 예상난이도를 opts.itemDifficulty에 병합(명시적으로 넣은 값이 우선)
+    let itemDifficulty = opts.itemDifficulty ? Object.assign({}, opts.itemDifficulty) : null;
+    let jeongboItems = null;
+    if (buckets.jeongbo[0]) {
+      jeongboItems = parseJeongbo(buckets.jeongbo[0]);
+      if (jeongboItems && jeongboItems.length) {
+        const fromFile = {};
+        jeongboItems.forEach(it => { if (it.difficulty) fromFile[it.q] = it.difficulty; });
+        itemDifficulty = Object.assign(fromFile, itemDifficulty || {});
+      }
+    }
 
     const result = { meta, warn, available: {} };
     if (scores && scores.length) {
@@ -345,11 +391,15 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       result.stats = result.stats || {};
       result.stats.avgItemRate = r1(items.reduce((a, b) => a + b.rate, 0) / items.length);
       result.available.items = true; result.available.distractor = true;
-      if (opts.itemDifficulty && Object.keys(opts.itemDifficulty).length) {
-        result.diffMismatch = difficultyMismatch(items, opts.itemDifficulty, opts.diffThreshold);
-        result.itemDifficulty = opts.itemDifficulty;
+      if (itemDifficulty && Object.keys(itemDifficulty).length) {
+        result.diffMismatch = difficultyMismatch(items, itemDifficulty, opts.diffThreshold);
+        result.itemDifficulty = itemDifficulty;
         result.available.diffMismatch = true;
       }
+    }
+    if (jeongboItems && jeongboItems.length) {
+      result.jeongbo = jeongboItems;
+      result.available.jeongbo = true;
     }
     // 정오표 표본
     if (buckets.jeongo.length && cutsInfo && items) {
@@ -372,7 +422,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     return result;
   }
 
-  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, analyze, gradeCuts, histogram, analyzeItemGrade, bandDist, countThreshold, difficultyMismatch, ACHIEVEMENT_PRESETS };
+  const api = { classify, parseSungjeok, parseBunseok, parseJeongo, parseJeongbo, analyze, gradeCuts, histogram, analyzeItemGrade, bandDist, countThreshold, difficultyMismatch, ACHIEVEMENT_PRESETS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.NEIS = api;
 })(typeof window !== 'undefined' ? window : this);
@@ -636,6 +686,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       <span class="req">필수</span> 성적(성취도) 일람표, 문항분석표 → 성적분포·문항별 정답률·오답 매력도<br>
       <span class="opt">선택</span> 개인별 정답표(정오표) → 변별도·신뢰도·등급별 정답률·세특 명단<br>
       <span class="opt">선택</span> 문항정답표(정답률비교표) → 반별 문항 정답률<br>
+      <span class="opt">선택</span> 문항정보표 → 문항별 예상 난이도 자동 입력(협의록 자료용)<br>
       <span class="opt">선택</span> 시험 문제지 <b>PDF</b>(한글에서 저장) → 문항 위에 정답률·변별도 배지 표시한 주석판 PDF 다운로드<br>
       <span style="color:#94a3b8;font-size:.8rem">※ 가진 파일만 넣어도 됩니다. 없는 분석은 자동으로 생략됩니다.</span>
     </div>
@@ -660,7 +711,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
 (function(){
   const files = []; // {file, aoa, type}
   let examPdf = null; // {name, bytes}
-  const TYPE_KO = {sungjeok:'성적 일람표',jeongdap:'문항정답표',bunseok:'문항분석표',jeongo:'개인 정답표',unknown:'미인식'};
+  const TYPE_KO = {sungjeok:'성적 일람표',jeongdap:'문항정답표',bunseok:'문항분석표',jeongo:'개인 정답표',jeongbo:'문항정보표',unknown:'미인식'};
   const $ = id => document.getElementById(id);
 
   const dz = $('dropzone'), fi = $('fileInput');
@@ -719,6 +770,7 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
     need.push(`${have.has('sungjeok')?'✅':'⬜'} 성적 일람표 <span class="req">(필수)</span>`);
     need.push(`${have.has('bunseok')?'✅':'⬜'} 문항분석표 <span class="req">(필수)</span>`);
     need.push(`${have.has('jeongo')?'✅':'⬜'} 개인 정답표 <span class="opt">(선택·변별도/세특)</span>`);
+    need.push(`${have.has('jeongbo')?'✅':'⬜'} 문항정보표 <span class="opt">(선택·예상난이도 자동입력)</span>`);
     need.push(`${examPdf?'✅':'⬜'} 시험 문제지 PDF <span class="opt">(선택·문항 위 배지)</span>`);
     $('needlist').innerHTML = (files.length||examPdf)? need.join('<br>') : '';
     $('runBtn').disabled = !(have.has('sungjeok')||have.has('bunseok'));
@@ -747,8 +799,15 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       wrap.innerHTML = '<div style="font-size:.82rem;color:#94a3b8">문항분석표를 넣으면 문항별 예상 난이도 입력칸이 나타납니다.</div>';
       return;
     }
-    wrap.innerHTML = `<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:4px">문항별 예상 난이도 (선택 · ${items.length}문항 · 15%p 이상 차이나는 문항만 협의록 표에 자동 표시)</label>`+
-      `<div class="diffgrid">`+items.map(it=>`<div class="diffcell"><span>Q${it.q}</span><select data-q="${it.q}" class="diffsel"><option value="">미정</option><option value="쉬움">쉬움</option><option value="보통">보통</option><option value="어려움">어려움</option></select></div>`).join('')+`</div>`;
+    const jf = files.find(f=>f.type==='jeongbo' && f.aoa);
+    const defaults = {};
+    if(jf){
+      const jb = NEIS.parseJeongbo(jf.aoa);
+      if(jb) jb.forEach(it=>{ if(it.difficulty) defaults[it.q]=it.difficulty; });
+    }
+    const opt=(v,q)=>`<option value="${v}" ${(defaults[q]||'')===v?'selected':''}>${v||'미정'}</option>`;
+    wrap.innerHTML = `<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:4px">문항별 예상 난이도 (선택 · ${items.length}문항 · 15%p 이상 차이나는 문항만 협의록 표에 자동 표시)${jf?' · <span style="color:#15803d">문항정보표에서 자동 입력됨(필요시 수정)</span>':''}</label>`+
+      `<div class="diffgrid">`+items.map(it=>`<div class="diffcell"><span>Q${it.q}</span><select data-q="${it.q}" class="diffsel">${opt('',it.q)}${opt('쉬움',it.q)}${opt('보통',it.q)}${opt('어려움',it.q)}</select></div>`).join('')+`</div>`;
   }
 
   $('runBtn').onclick = () => {
