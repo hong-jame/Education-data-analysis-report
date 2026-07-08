@@ -103,7 +103,8 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       if (!(bn != null && bn === Math.floor(bn) && bn >= 1 && bn <= 60)) continue;
       classCols.forEach((cc, k) => { const v = row[cc]; if (isNum(v)) { scores.push(v); classes[k].n++; classes[k].sum += v; } });
     }
-    const cls = classes.map((c, i) => ({ c: i + 1, n: c.n, sum: r1(c.sum), avg: c.n ? r1(c.sum / c.n) : 0 }));
+    // 반 번호는 실제 헤더 값을 사용(선택과목 등 일부 반이 빠져 번호가 연속이 아닐 수 있음, 예: 1,2,3,4,6,7,8,9,10)
+    const cls = classes.map((c, i) => { const hn = num(aoa[rh][classCols[i]]); return { c: hn != null ? hn : i + 1, n: c.n, sum: r1(c.sum), avg: c.n ? r1(c.sum / c.n) : 0 }; });
     return { scores, classes: cls };
   }
 
@@ -217,7 +218,15 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
         students.push({ id: num(row[idCol]), name: S(row[nameCol]), banno: S(row[nameCol - 1]), raw: raw, corr: corr, resp: resp });
       }
     });
-    return { answer, baejeom, students };
+    // 같은 학번이 여러 응시실 파일에 중복으로 들어온 경우(재다운로드 등) 첫 번째만 남기고 제거
+    const seen = new Set();
+    const deduped = students.filter(s => {
+      if (s.id == null) return true;
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    return { answer, baejeom, students: deduped };
   }
 
   /* ── 통계 유틸 ── */
