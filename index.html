@@ -1249,12 +1249,28 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
       const page = await doc.getPage(p);
       const vp = page.getViewport({scale:1});
       const tc = await page.getTextContent();
-      for(const it of tc.items){
+      const its = tc.items;
+      for(let i=0;i<its.length;i++){
+        const it = its[i];
         const t = (it.str||'').trim();
+        let num = null;
         const mm = t.match(/^(\d{1,2})[.\)]$/);
-        if(!mm) continue;
+        if(mm) num = parseInt(mm[1]);
+        else if(/^\d{1,2}$/.test(t)){
+          // 번호와 마침표가 별개 조각으로 쪼개져 나오는 PDF가 있다("11" + "." ).
+          // 같은 줄에서 바로 뒤에 붙어 있는 . 또는 ) 이면 하나의 번호로 본다.
+          for(let j=i+1;j<Math.min(i+4,its.length);j++){
+            const nx = its[j], nt = (nx.str||'').trim();
+            if(nt==='') continue;
+            const dx = nx.transform[4]-it.transform[4];
+            if(/^[.\)]$/.test(nt) && Math.abs(nx.transform[5]-it.transform[5])<=1
+               && dx>=0 && dx<=(it.width||0)+3) num = parseInt(t);
+            break;
+          }
+        }
+        if(num===null) continue;
         const tr = it.transform;
-        cands.push({page:p-1, num:parseInt(mm[1]), x:tr[4], y:tr[5], size:tr[3], pw:vp.width});
+        cands.push({page:p-1, num, x:tr[4], y:tr[5], size:tr[3], pw:vp.width});
       }
     }
     if(!cands.length) return {qs:null, reason:'문항 번호를 문제지에서 찾지 못했습니다. 한글에서 바로 저장한 PDF(텍스트 선택 가능)인지 확인해 주세요.'};
@@ -1268,10 +1284,20 @@ tbody td{padding:10px 14px;text-align:center;white-space:nowrap}
     const twoCol = spread > pw*0.3;
     const thresh = pw/2;
     filtered.sort((a,b)=> a.page-b.page || (twoCol?((a.x<thresh?0:1)-(b.x<thresh?0:1)):0) || (b.y-a.y));
-    const nums = filtered.map(c=>c.num);
-    const ok = nums.length===expectedCount && nums.every((n,i)=>n===i+1);
-    if(!ok) return {qs:null, reason:`문항 ${expectedCount}개 중 ${nums.length}개만 인식되었습니다(순서: ${nums.slice(0,10).join(',')}${nums.length>10?'...':''}). 이 문제지 형식은 아직 지원되지 않을 수 있습니다.`};
-    return {qs:filtered, reason:null};
+    // 읽는 순서를 따라가며 1,2,3...N 으로 이어지는 번호만 채택한다.
+    // 문제지에는 문항 번호가 아닌 번호 목록(예: 논술형 답안 작성 유의사항 1.2.3.4.)도
+    // 섞여 있는데, 그런 번호는 이미 지나간 번호라 여기서 자연히 걸러진다.
+    const qs=[]; let want=1;
+    for(const c of filtered){
+      if(c.num!==want) continue;
+      qs.push(c); want++;
+      if(want>expectedCount) break;
+    }
+    if(qs.length!==expectedCount){
+      const got = qs.map(c=>c.num);
+      return {qs:null, reason:`문항 ${expectedCount}개 중 ${got.length}개만 인식되었습니다(인식된 번호: ${got.slice(0,10).join(',')}${got.length>10?'...':''}). 이 문제지 형식은 아직 지원되지 않을 수 있습니다.`};
+    }
+    return {qs, reason:null};
   }
 
   function rateFillColor(r){ return r>=70?[0.84,0.94,0.80]: r>=50?[0.99,0.93,0.80]:[0.99,0.89,0.89]; }
